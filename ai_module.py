@@ -1,60 +1,46 @@
-import requests
-import re
+from huggingface_hub import InferenceClient
 
 class AiModule:
-    def __init__(self, api_key: str, api_url: str = "https://api-inference.huggingface.co/models/your-model-name"):
+    def __init__(self, api_key: str, model_name: str):
         self.api_key = api_key
-        self.api_url = api_url
-        self.connected = False
+        self.model_name = model_name
+        self.client = None
 
     def connect(self):
+        """Makes connection to with Inference API"""
         if self.api_key:
-            self.connected = True
+            self.client = InferenceClient(token=self.api_key, model=self.model_name)
             print("Connected to the AI API successfully.")
         else:
             raise ValueError("API key is missing. Cannot connect to the AI API.")
 
     def prompt(self, user_input: str) -> str:
-        if not self.connected:
+        """Inputs a prompt for the model and returns a response"""
+        if self.client is None:
             raise ConnectionError("Not connected to the AI API. Call the 'connect' function first.")
         
-        response = self._call_ai_api(user_input)
-        return response
+        response = self.client.text_generation(user_input)
+        return response if response else "No response from the API."
 
     def filtering_prompt(self, user_input: str, forbidden_topics: list) -> str:
+        """Contacts the model to generate another response without mentioning the forbidden topics"""
         response = self.prompt(user_input)
         
         for topic in forbidden_topics:
-            pattern = re.compile(re.escape(topic), re.IGNORECASE)
-            response = pattern.sub("[Filtered Content]", response)
+            if topic in response:
+                response = self.client.text_generation(f"Change the following text avoiding the topics: {topic}\n {response}")
         
         return response
-    
-    def _call_ai_api(self, user_input: str) -> str:
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "inputs": user_input
-        }
-        response = requests.post(self.api_url, headers=headers, json=payload)
-        
-        if response.status_code == 200:
-            return response.json().get("generated_text", "I'm sorry, I don't understand that.")
-        else:
-            return f"Error: {response.status_code} - {response.text}"
 
-# Example usage
 if __name__ == "__main__":
-    api_key = "your_hugging_face_api_key_here"
-    model_name = "gpt2"  # Use any model available on Hugging Face
+    api_key = "User API Key" # User API Key from Hugging Face
+    model_name = "mistralai/Mistral-7B-Instruct-v0.3"  # Use any model available on Hugging Face
 
-    ai = AiModule(api_key=api_key, api_url=f"https://api-inference.huggingface.co/models/{model_name}")
+    ai = AiModule(api_key=api_key, model_name=model_name)
     ai.connect()
     
-    user_input = "Hello"
-    forbidden_topics = ["weather"]
+    user_input = "Tell me about the weather today"
+    forbidden_topics = ["weather", "temperature"]
     
     print("Response without filtering:")
     print(ai.prompt(user_input))
